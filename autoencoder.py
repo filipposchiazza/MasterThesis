@@ -17,7 +17,8 @@ class Autoencoder:
         self.model = None
         
         self._num_conv_layers = len(conv_filters)
-        self.shape_before_bottleneck = None
+        self._model_input = None
+        self._shape_before_bottleneck = None
         
         self._build()
 
@@ -25,17 +26,19 @@ class Autoencoder:
     def summary(self):
         self.encoder.summary()
         self.decoder.summary()
+        self.model.summary()
     
     def _build(self):
         self._build_encoder()
         self._build_decoder()
-        #self._build_autoencoder()
+        self._build_autoencoder()
         
 ###########################################################################################################################
     #Build the encoder    
     
     def _build_encoder(self):
         encoder_input = self._add_encoder_input()
+        self._model_input = encoder_input
         conv_layers = self._add_conv_layers(encoder_input)
         bottleneck = self._add_bottleneck(conv_layers)
         self.encoder = k.Model(encoder_input, bottleneck, name = "encoder")
@@ -73,7 +76,7 @@ class Autoencoder:
     
     def _add_bottleneck(self, x):
         "Flatten data and add a bottleneck (Dense layer)"
-        self.shape_before_bottleneck = k.backend.int_shape(x)[1:] #store the shape before flatten, because it will be useful for building decoder
+        self._shape_before_bottleneck = k.backend.int_shape(x)[1:] #store the shape before flatten, because it will be useful for building decoder
         x = k.layers.Flatten()(x)
         x = k.layers.Dense(self.latent_space_dim, name = "encoder_output")(x)
         return x
@@ -95,13 +98,13 @@ class Autoencoder:
     
     
     def _add_dense_layer(self, decoder_input):
-        num_neurons = np.prod(self.shape_before_bottleneck)
+        num_neurons = np.prod(self._shape_before_bottleneck)
         dense_layer = k.layers.Dense(num_neurons, name="decoder_dense_layer")(decoder_input)
         return dense_layer 
     
     
     def _add_reshape_layer(self, dense_layer):
-        return k.layers.Reshape(self.shape_before_bottleneck)(dense_layer)
+        return k.layers.Reshape(self._shape_before_bottleneck)(dense_layer)
     
     
     def _add_conv_transpose_layers(self, x):
@@ -143,5 +146,26 @@ class Autoencoder:
 #########################################################################################################################    
     #Build the autoencoder
 
+    def _build_autoencoder(self):
+        model_input = self._model_input
+        model_output = self.decoder(self.encoder(model_input))
+        self.model = k.Model(model_input, model_output, name="Autoencoder")
       
+#########################################################################################################################
+    #Compile the autoencoder
     
+    def compile_model(self, learning_rate = 0.001):
+        optimizer = k.optimizers.Adam(learning_rate = learning_rate)
+        loss_function = k.losses.MeanSquaredError()
+        self.model.compile(optimizer=optimizer, loss = loss_function)
+        
+#########################################################################################################################
+    #Train the autoencoder
+    
+    def train(self, x_train, batch_size, num_epochs):
+        self.model.fit(x_train, 
+                       x_train,
+                       batch_size = batch_size,
+                       epochs = num_epochs,
+                       shuffle = True)
+        
