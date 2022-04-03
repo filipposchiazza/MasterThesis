@@ -16,7 +16,7 @@ class Autoencoder:
         self.decoder = None
         self.model = None
         
-        self.num_conv_layers = len(conv_filters)
+        self._num_conv_layers = len(conv_filters)
         self.shape_before_bottleneck = None
         
         self._build()
@@ -24,12 +24,15 @@ class Autoencoder:
     
     def summary(self):
         self.encoder.summary()
+        self.decoder.summary()
     
     def _build(self):
         self._build_encoder()
-        #self._build_decoder()
+        self._build_decoder()
         #self._build_autoencoder()
         
+###########################################################################################################################
+    #Build the encoder    
     
     def _build_encoder(self):
         encoder_input = self._add_encoder_input()
@@ -44,7 +47,7 @@ class Autoencoder:
     
     def _add_conv_layers(self, encoder_input):
         x = encoder_input
-        for i in range(self.num_conv_layers):
+        for i in range(self._num_conv_layers):
             x = self._add_conv_layer(i, x)
         return x
     
@@ -67,10 +70,78 @@ class Autoencoder:
         
         return x
     
+    
     def _add_bottleneck(self, x):
         "Flatten data and add a bottleneck (Dense layer)"
         self.shape_before_bottleneck = k.backend.int_shape(x)[1:] #store the shape before flatten, because it will be useful for building decoder
         x = k.layers.Flatten()(x)
         x = k.layers.Dense(self.latent_space_dim, name = "encoder_output")(x)
         return x
+    
+##########################################################################################################################   
+    #Build the decoder    
+    
+    def _build_decoder(self):
+        decoder_input = self._add_decoder_input()
+        dense_layer = self._add_dense_layer(decoder_input)
+        reshaped_layer = self._add_reshape_layer(dense_layer)
+        conv_transpose_layers = self._add_conv_transpose_layers(reshaped_layer)
+        decoder_output = self._add_decoder_output(conv_transpose_layers)
+        self.decoder = k.Model(decoder_input, decoder_output, name = "decoder")
+      
         
+    def _add_decoder_input(self):
+        return k.layers.Input(shape=self.latent_space_dim, name="decoder_input")
+    
+    
+    def _add_dense_layer(self, decoder_input):
+        num_neurons = np.prod(self.shape_before_bottleneck)
+        dense_layer = k.layers.Dense(num_neurons, name="decoder_dense_layer")(decoder_input)
+        return dense_layer 
+    
+    
+    def _add_reshape_layer(self, dense_layer):
+        return k.layers.Reshape(self.shape_before_bottleneck)(dense_layer)
+    
+    
+    def _add_conv_transpose_layers(self, x):
+        "loop through all the conv layers in reverse order and stop at the first layer"
+        for i in reversed(range(1, self._num_conv_layers)):
+            x = self._add_conv_transpose_layer(i, x)
+        return x
+    
+    
+    def _add_conv_transpose_layer(self, layer_index, x):
+        layer_number = self._num_conv_layers - layer_index
+        
+        conv_transpose_layer = k.layers.Conv2DTranspose(
+            filters = self.conv_filters[layer_index], 
+            kernel_size = self.conv_kernels[layer_index],
+            strides = self.conv_strides[layer_index],
+            padding = 'same',
+            activation = k.activations.relu, 
+            name = "decoder_conv_transpose_layer_number_{}".format(layer_number))
+        
+        x = conv_transpose_layer(x)
+        x = k.layers.BatchNormalization(name = "decoder_batch_norm_layer_number_{}".format(layer_number))(x)
+        
+        return x
+    
+    def _add_decoder_output(self, x):
+        
+        conv_transpose_layer = k.layers.Conv2DTranspose(
+            filters = 1, # 1 for gray-scale image, 3 for RGB image 
+            kernel_size = self.conv_kernels[0],
+            strides = self.conv_strides[0],
+            padding = 'same',
+            activation = k.activations.sigmoid,
+            name = "decoder_conv_transpose_layer_number_{}".format(self._num_conv_layers))
+        
+        output = conv_transpose_layer(x)
+        return output
+   
+#########################################################################################################################    
+    #Build the autoencoder
+
+      
+    
