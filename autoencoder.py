@@ -170,7 +170,16 @@ class Autoencoder:
                        batch_size = batch_size,
                        epochs = num_epochs,
                        shuffle = True)
-
+        
+        
+#########################################################################################################################
+    #Reconstruction method
+    
+    def reconstruct(self, images):
+        latent_representation = self.encoder.predict(images)
+        reconstructed_image = self.decoder.predict(latent_representation)
+        return reconstructed_image, latent_representation
+    
 #########################################################################################################################
     #Saving method
     def save(self, save_folder = '.'):
