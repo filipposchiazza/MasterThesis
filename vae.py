@@ -9,14 +9,15 @@ tf.compat.v1.disable_eager_execution()
 
 class VAE:
     
-    def __init__(self, input_shape, conv_filters, conv_kernels, conv_strides, latent_space_dim):
+    def __init__(self, input_shape, conv_filters, conv_kernels, conv_strides, latent_space_dim, kl_weight, num_channel):
 
         self.input_shape = input_shape
         self.conv_filters = conv_filters
         self.conv_kernels = conv_kernels
         self.conv_strides = conv_strides
         self.latent_space_dim = latent_space_dim
-        self.recostruction_loss_weight = 1000
+        self.kl_weight = kl_weight
+        self.num_channel = num_channel
         
         self.encoder = None
         self.decoder = None
@@ -155,7 +156,7 @@ class VAE:
     def _add_decoder_output(self, x):
         
         conv_transpose_layer = k.layers.Conv2DTranspose(
-            filters = 1, # 1 for gray-scale image, 3 for RGB image 
+            filters = self.num_channel, # 1 for gray-scale image, 3 for RGB image 
             kernel_size = self.conv_kernels[0],
             strides = self.conv_strides[0],
             padding = 'same',
@@ -189,7 +190,7 @@ class VAE:
     def _calculate_combined_loss(self, y_target, y_prediction):
         recostruction_loss = self._calculate_recostruction_loss(y_target, y_prediction)
         kl_loss = self._calculate_kl_loss(y_target, y_prediction)
-        combined_loss = self.recostruction_loss_weight * recostruction_loss + kl_loss
+        combined_loss = recostruction_loss + self.kl_weight * kl_loss
         return combined_loss        
 
 
@@ -247,11 +248,14 @@ class VAE:
             self.conv_filters,
             self.conv_kernels,
             self.conv_strides,
-            self.latent_space_dim
+            self.latent_space_dim,
+            self.kl_weight,
+            self.num_channel
             ]
         save_path = os.path.join(save_folder, "parameters.pkl")
         with open(save_path, "wb") as f:
             pickle.dump(parameters, f)
+        f.close()
             
     def _save_weights(self, save_folder):
         save_path = os.path.join(save_folder, "weights.h5")
@@ -284,5 +288,7 @@ if __name__ == '__main__':
               conv_filters=(32, 64, 64, 64), 
               conv_kernels=(3, 3, 3, 3),
               conv_strides=(1, 2, 2, 1), 
-              latent_space_dim=2)
+              latent_space_dim=2,
+              kl_weight=0.001,
+              num_channel=1)
     vae.summary()
