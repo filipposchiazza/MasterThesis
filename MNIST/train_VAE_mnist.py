@@ -35,7 +35,7 @@ def load_mnist(train_ratio=0.6, validation_ratio=0.2, test_ratio=0.2):
 
 
 
-def train(x_train, learning_rate, batch_size, epochs, latent_dim, kl_weight):
+def train(x_train, x_val, learning_rate, batch_size, epochs, latent_dim, kl_weight):
     
     vae = VAE(input_shape = (28, 28, 1),
                               conv_filters = (32, 64, 64, 64),
@@ -46,27 +46,27 @@ def train(x_train, learning_rate, batch_size, epochs, latent_dim, kl_weight):
                               num_channel = 1)
     #vae.summary()
     vae.compile_model(learning_rate=learning_rate)
-    vae.train(x_train, batch_size, epochs)
+    vae.train(x_train, x_val, batch_size, epochs)
     return vae
     
 
 
 if __name__ == '__main__':
-    x_train, _, _, _, _, _ = load_mnist()
+    x_train, _, x_val, _, _, _ = load_mnist()
     
     # Train the model for different values of the kl_weight
     for kl in KL_WEIGHTS:
-        vae = train(x_train, LEARNING_RATE, BATCH_SIZE, EPOCHS, latent_dim=2,  kl_weight=kl)
+        vae = train(x_train, x_val, LEARNING_RATE, BATCH_SIZE, EPOCHS, latent_dim=2,  kl_weight=kl)
         vae.save("model/KL_impact/kl_weight=" + str(kl))
     
     # Train the model for different number of epochs
     for n_epochs in N_EPOCHS:
-        vae = train(x_train, LEARNING_RATE, BATCH_SIZE, n_epochs, latent_dim=2, kl_weight=0.001)
+        vae = train(x_train, x_val, LEARNING_RATE, BATCH_SIZE, n_epochs, latent_dim=2, kl_weight=0.001)
         vae.save("model/N_epochs_impact/n_epochs=" + str(n_epochs))
         
     # Train the model for different values of the latent space dimension
     for latent_dim in LATENT_SPACE_DIM:
-        vae = train(x_train, LEARNING_RATE, BATCH_SIZE, EPOCHS, latent_dim=latent_dim, kl_weight=0.001)
+        vae = train(x_train, x_val, LEARNING_RATE, BATCH_SIZE, EPOCHS, latent_dim=latent_dim, kl_weight=0.001)
         vae.save("model/Latent_space_dim_impact/")
         
     

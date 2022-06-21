@@ -233,12 +233,13 @@ class VAE:
 #########################################################################################################################
     #Train the variational autoencoder
     
-    def train(self, x_train, batch_size, num_epochs):
+    def train(self, x_train, x_validation, batch_size, num_epochs):
         self.model.fit(x_train, 
                        x_train,
                        batch_size = batch_size,
                        epochs = num_epochs,
-                       shuffle = True)
+                       shuffle = True,
+                       validation_data=(x_validation, x_validation))
         
         
 #########################################################################################################################
