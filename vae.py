@@ -10,11 +10,35 @@ tf.compat.v1.disable_eager_execution()
 class VAE:
     
     def __init__(self, input_shape, conv_filters, conv_kernels, conv_strides, latent_space_dim, kl_weight, num_channel):
+        """ Create VAE object.
+        
 
-        self.input_shape = input_shape
-        self.conv_filters = conv_filters
-        self.conv_kernels = conv_kernels
-        self.conv_strides = conv_strides
+        Parameters
+        ----------
+        input_shape : list
+            Input dimension.
+        conv_filters : list or tuple 
+            Number of convolutional filters for each layer.
+        conv_kernels : list or tuple
+            Dimension of the convolutional kernels for each layer.
+        conv_strides : list or tuple
+            Strides for each layer.
+        latent_space_dim : int
+            Dimension of the latent space (embedding).
+        kl_weight : float
+            Weight of KL in the total loss function.
+        num_channel : int
+            1 for Gray-scale images and 3 for RGB images.
+
+        Returns
+        -------
+        None.
+
+        """
+        self.input_shape = input_shape    # [28, 28, 1] image size
+        self.conv_filters = conv_filters  # [3, 4, 6] 3 conv filters in first layer, 4 in the second and so on
+        self.conv_kernels = conv_kernels  # [3, 5, 3] 3x3 kernel size in the first layer and so on
+        self.conv_strides = conv_strides  # [1, 1, 1]
         self.latent_space_dim = latent_space_dim
         self.kl_weight = kl_weight
         self.num_channel = num_channel
@@ -27,7 +51,7 @@ class VAE:
         self._model_input = None
         self._shape_before_bottleneck = None
         
-        self._build()
+        self._build() # when an object VAE is created, this method is called
 
     
     def summary(self):
@@ -56,6 +80,7 @@ class VAE:
     
     
     def _add_conv_layers(self, encoder_input):
+        "Create all convolutional blocks in the encoder"
         x = encoder_input
         for i in range(self._num_conv_layers):
             x = self._add_conv_layer(i, x)
@@ -68,9 +93,9 @@ class VAE:
         layer_number = layer_index + 1 # I do not want to have layer 0
         
         conv_layer = k.layers.Conv2D(
-            filters = self.conv_filters[layer_index], 
-            kernel_size = self.conv_kernels[layer_index],
-            strides = self.conv_strides[layer_index],
+            filters = self.conv_filters[layer_index],  # number of filters in this convolutional layer
+            kernel_size = self.conv_kernels[layer_index],  # size of kernels in this convolutional layer
+            strides = self.conv_strides[layer_index],  # stride for this convolutional layer
             padding = 'same',
             activation=k.activations.relu,
             name = "encoder_conv_layer_number_{}".format(layer_number))
@@ -84,6 +109,7 @@ class VAE:
     def _add_bottleneck(self, x):
         "Flatten data and add a bottleneck with Gaussian sampling (Dense layer)"
         self._shape_before_bottleneck = k.backend.int_shape(x)[1:] #store the shape before flatten, because it will be useful for building decoder
+                                                                   #(first element is batch size, we are not interested in it)
         x = k.layers.Flatten()(x)
         self.mu = k.layers.Dense(self.latent_space_dim, name="mu")(x)
         self.log_variance = k.layers.Dense(self.latent_space_dim, name="log_variance")(x)
@@ -237,6 +263,7 @@ class VAE:
         self._create_folder_if_it_doesnt_exist(save_folder)
         self._save_parameters(save_folder)
         self._save_weights(save_folder)
+        self._save_history(save_folder)
     
     def _create_folder_if_it_doesnt_exist(self, folder):
         if not os.path.exists(folder):
@@ -260,6 +287,13 @@ class VAE:
     def _save_weights(self, save_folder):
         save_path = os.path.join(save_folder, "weights.h5")
         self.model.save_weights(save_path)
+    
+    def _save_history(self, save_folder):
+        history = self.model.history.history
+        save_path = os.path.join(save_folder, "history.pkl")
+        with open(save_path, "wb") as f:
+            pickle.dump(history, f)
+        f.close()
         
     
     
@@ -282,7 +316,7 @@ class VAE:
         
         
         
-        
+"""        
 if __name__ == '__main__':
     vae = VAE(input_shape=(28, 28, 1),
               conv_filters=(32, 64, 64, 64), 
@@ -292,3 +326,4 @@ if __name__ == '__main__':
               kl_weight=0.001,
               num_channel=1)
     vae.summary()
+"""
