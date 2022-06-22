@@ -3,6 +3,7 @@ import pickle
 import numpy as np
 import tensorflow.keras as k
 import tensorflow as tf
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 
 tf.compat.v1.disable_eager_execution()
 
@@ -234,12 +235,48 @@ class VAE:
     #Train the variational autoencoder
     
     def train(self, x_train, x_validation, batch_size, num_epochs):
+        """ Training function.
+        
+
+        Parameters
+        ----------
+        x_train : numpy array
+            Training dataset.
+        x_validation : numpy array
+            Validation dataset: the model does not use this dataset for training.
+        batch_size : int
+            Batch size.
+        num_epochs : int
+            Number of epochs.
+
+
+        Returns
+        -------
+        None.
+
+        """
+        # create an early stopping criteria
+        early_stopping = EarlyStopping(monitor = 'val_loss',
+                                       patience = 7,
+                                       verbose = 1,
+                                       mode = 'min',
+                                       restore_best_weights = True)
+        """
+        # introduce a model ceckpoint, in order to consider only the best epoch
+        ceckpoint_filepath = saving_folder + '/ceckpoint.hdf5'
+        ceckpoint = ModelCheckpoint(filepath = ceckpoint_filepath,
+                                    monitor = 'val_loss',
+                                    verbose = 1,
+                                    save_best_only = True,
+                                    mode = 'min')
+        """
         self.model.fit(x_train, 
                        x_train,
                        batch_size = batch_size,
                        epochs = num_epochs,
                        shuffle = True,
-                       validation_data=(x_validation, x_validation))
+                       validation_data=(x_validation, x_validation),
+                       callbacks = [early_stopping])
         
         
 #########################################################################################################################
