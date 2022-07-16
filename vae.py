@@ -214,7 +214,7 @@ class VAE:
         kl_loss = -0.5 * k.backend.sum(1 + self.log_variance - k.backend.square(self.mu) - k.backend.exp(self.log_variance), axis=1)
         return kl_loss
     
-    def _calculate_combined_loss(self, y_target, y_prediction):
+    def combined_loss(self, y_target, y_prediction):
         recostruction_loss = self._calculate_recostruction_loss(y_target, y_prediction)
         kl_loss = self._calculate_kl_loss(y_target, y_prediction)
         combined_loss = recostruction_loss + self.kl_weight * kl_loss
@@ -228,7 +228,7 @@ class VAE:
     def compile_model(self, learning_rate = 0.001):
         optimizer = k.optimizers.Adam(learning_rate = learning_rate)
         self.model.compile(optimizer=optimizer, 
-                           loss = self._calculate_combined_loss, 
+                           loss = self.combined_loss, 
                            metrics=[self._calculate_recostruction_loss, self._calculate_kl_loss])
         
 #########################################################################################################################
@@ -257,7 +257,7 @@ class VAE:
         """
         # create an early stopping criteria
         early_stopping = EarlyStopping(monitor = 'val_loss',
-                                       patience = 7,
+                                       patience = 5,
                                        verbose = 1,
                                        mode = 'min',
                                        restore_best_weights = True)
@@ -350,6 +350,13 @@ class VAE:
         
     def _load_weights (self, weights_path):
         self.model.load_weights(weights_path)
+    
+    @classmethod
+    def load_history(cls, save_folder = '.'):
+        history_path = os.path.join(save_folder, "history.pkl")
+        with open(history_path, "rb") as f:
+            history = pickle.load(f)
+        return history
         
         
         

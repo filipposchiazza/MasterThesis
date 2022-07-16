@@ -179,7 +179,17 @@ class Autoencoder:
         latent_representation = self.encoder.predict(images)
         reconstructed_image = self.decoder.predict(latent_representation)
         return reconstructed_image, latent_representation
+
+########################################################################################################################
+
+    #Generating method
     
+    def generate(self, n_sample_to_generate):
+        data = np.random.normal(0, 1, (n_sample_to_generate, self.latent_space_dim))
+        generated_samples = self.decoder.predict(data)
+        return generated_samples
+
+
 #########################################################################################################################
     #Saving method
     def save(self, save_folder = '.'):
