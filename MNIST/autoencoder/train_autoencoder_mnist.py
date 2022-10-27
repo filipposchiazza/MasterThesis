@@ -1,4 +1,4 @@
-from autoencoder import Autoencoder
+import autoencoder
 from tensorflow.keras.datasets import mnist
 
 

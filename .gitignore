@@ -3,4 +3,11 @@ model/
 data/
 .ipynb_checkpoints/
 .spyproject/
-
+model_histo_images_small/
+.pytest_cache/
+gamma_vae_bis.py
+gamma_vae.py
+MNIST/Images_to_show/
+MNIST/Images_for_relation/
+MNIST/__pycache__/
+CNN_classification_task/converted_labeled_data/

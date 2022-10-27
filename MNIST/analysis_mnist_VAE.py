@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import ImageGrid
 from vae import VAE
 from train_VAE_mnist import load_mnist
-import umap
 
 
 
@@ -87,8 +87,8 @@ def plot_epochs_history(save_folder):
     # plot train vs validation reconstruction loss
     fig2 = plt.figure()
     ax2 = fig2.add_subplot(111)
-    ax2.plot(x, history["_calculate_recostruction_loss"], color="black", label="Training reconstruction loss")
-    ax2.plot(x, history["val__calculate_recostruction_loss"], color="green", label="Validation reconstruction loss")
+    ax2.plot(x, history["reconstruction_loss"], color="black", label="Training reconstruction loss")
+    ax2.plot(x, history["val_reconstruction_loss"], color="green", label="Validation reconstruction loss")
     
     plt.legend()
     plt.title("Training vs Validation reconstruction loss")
@@ -99,8 +99,8 @@ def plot_epochs_history(save_folder):
     # plot train vs validation Kullback-Leibner loss
     fig3 = plt.figure()
     ax3 = fig3.add_subplot(111)
-    ax3.plot(x, history["_calculate_kl_loss"], color="black", label="Training KL loss")
-    ax3.plot(x, history["val__calculate_kl_loss"], color="green", label="Validation KL loss")
+    ax3.plot(x, history["kl_loss"], color="black", label="Training KL loss")
+    ax3.plot(x, history["val_kl_loss"], color="green", label="Validation KL loss")
     
     plt.legend()
     plt.title("Training vs Validation Kullback-Leibner loss")
@@ -112,11 +112,11 @@ def plot_epochs_history(save_folder):
     fig4 = plt.figure()
     ax4 = fig4.add_subplot(111)
     ax4.plot(x, history["loss"], color="black", label="Total combined loss")
-    ax4.plot(x, history["_calculate_recostruction_loss"], color="green", label="Reconstruction loss")
-    ax4.plot(x, 0.001*np.asarray(history["_calculate_kl_loss"]), color="red", label="KL loss")
+    ax4.plot(x, history["reconstruction_loss"], color="green", label="Reconstruction loss")
+    ax4.plot(x, 0.001*np.asarray(history["kl_loss"]), color="red", label="KL loss")
     
     plt.legend()
-    plt.title("Training loss and its components (reconstruction and Kullback-Leibner loss)")
+    plt.title("Training loss and its components")
     plt.xlabel("Number of epochs")
     plt.ylabel("Loss value")
     plt.show()    
@@ -125,23 +125,61 @@ def plot_epochs_history(save_folder):
     fig5 = plt.figure()
     ax5 = fig5.add_subplot(111)
     ax5.plot(x, history["val_loss"], color="black", label="Total combined loss")
-    ax5.plot(x, history["val__calculate_recostruction_loss"], color="green", label="Reconstruction loss")
-    ax5.plot(x, 0.001*np.asarray(history["val__calculate_kl_loss"]), color="red", label="KL loss")
+    ax5.plot(x, history["val_reconstruction_loss"], color="green", label="Reconstruction loss")
+    ax5.plot(x, 0.001*np.asarray(history["val_kl_loss"]), color="red", label="KL loss")
     
     plt.legend()
-    plt.title("Validation loss and its components (reconstruction and Kullback-Leibner loss)")
+    plt.title("Validation loss and its components")
     plt.xlabel("Number of epochs")
     plt.ylabel("Loss value")
     plt.show()  
     
         
-        
-def dim_reduction(vae, data):
-    _, latent_representation = vae.reconstruct(data)
-    reducer = umap.Umap()
-    embedding = reducer.fit_transform(latent_representation)
-    plt.scatter(embedding[:, 0], embedding[:, 1])
+def plot_images_grid(images_set, grid_size, title='', xlabel='', ylabel=''):
+    fig = plt.figure(figsize=(4., 4.))
+    grid = ImageGrid(fig, 111, nrows_ncols=grid_size, axes_pad=0.1)
+
+    for ax, im in zip(grid, images_set):
+        # Iterating over the grid returns the Axes.
+        ax.imshow(im)
+        ax.set_yticklabels([])
+        ax.set_xticklabels([])
+    plt.show()
     
+    
+def plot_latent_space(vae, n=30, figsize=15, title=''):
+    # display a n*n 2D manifold of digits
+    digit_size = 28
+    scale = 1.0
+    figure = np.zeros((digit_size * n, digit_size * n))
+    # linearly spaced coordinates corresponding to the 2D plot
+    # of digit classes in the latent space
+    grid_x = np.linspace(-scale, scale, n)
+    grid_y = np.linspace(-scale, scale, n)[::-1]
+
+    for i, yi in enumerate(grid_y):
+        for j, xi in enumerate(grid_x):
+            z_sample = np.array([[xi, yi]])
+            x_decoded = vae.decoder.predict(z_sample)
+            digit = x_decoded[0].reshape(digit_size, digit_size)
+            figure[
+                i * digit_size : (i + 1) * digit_size,
+                j * digit_size : (j + 1) * digit_size,
+            ] = digit
+
+    plt.figure(figsize=(figsize, figsize))
+    start_range = digit_size // 2
+    end_range = n * digit_size + start_range
+    pixel_range = np.arange(start_range, end_range, digit_size)
+    sample_range_x = np.round(grid_x, 1)
+    sample_range_y = np.round(grid_y, 1)
+    plt.xticks(pixel_range, sample_range_x)
+    plt.yticks(pixel_range, sample_range_y)
+    plt.xlabel("$z_0$")
+    plt.ylabel("$z_1$")
+    plt.title(title)
+    plt.imshow(figure, cmap="gray_r")
+    plt.show()
     
     
     
@@ -158,18 +196,22 @@ if __name__ == "__main__":
     for kl in KL_WEIGHTS:
         vae = VAE.load("model/KL_impact/kl_weight=" + str(kl))
         
-        #plot some reconstructed images vs original ones
-        num_sample_images_to_show = 8
+        plot_latent_space(vae, title="Generation with KL weight=" + str(kl))
+        
+        #plot original, reconstructed and generated images
+        num_sample_images_to_show = 25
         sample_images, _ = select_images(x_val, y_val, num_sample_images_to_show)
         reconstructed_images, _ = vae.reconstruct(sample_images)
-        plot_reconstructed_images(sample_images, reconstructed_images, kl, save=False)
+        generated_images = vae.generate(25)
+        
+        plot_images_grid(sample_images, (5, 5))
+        plot_images_grid(reconstructed_images, (5, 5))
+        plot_images_grid(generated_images, (5, 5))
     
         #plot the latent space representation
         _, latent_representations = vae.reconstruct(x_val)
         plot_images_encoded_in_latent_space(latent_representations, y_val, kl, save=False)
     
-        # generate images
-        generation(vae, 8, kl, save=False)
         
         # plot epochs history
         plot_epochs_history("model/KL_impact/kl_weight=" + str(kl))
@@ -179,7 +221,28 @@ if __name__ == "__main__":
     # Now analyze the effect of the variation of the latent space dimension
     LATENT_SPACE_DIM = [2, 3, 5, 8, 10, 15, 20, 30]
     for dim in LATENT_SPACE_DIM:
-        vae = VAE.load("model/KL_impact/kl_weight=0.0001/Latent_space_dim_impact/latent_space_dim=" + str(dim))
+        vae = VAE.load("model/KL_impact/kl_weight=0.001/Latent_space_dim_impact/latent_space_dim=" + str(dim))
+        
+        #plot some reconstructed images vs original ones
+        num_sample_images_to_show = 8
+        sample_images, _ = select_images(x_val, y_val, num_sample_images_to_show)
+        reconstructed_images, _ = vae.reconstruct(sample_images)
+        plot_reconstructed_images(sample_images, reconstructed_images, 0.001, save=False)
+    
+        # generate images
+        generation(vae, 8, 0.001, save=False)
+        
+        # plot epochs history
+        #plot_epochs_history("model/KL_impact/kl_weight=0.0001/Latent_space_dim_impact/latent_space_dim=" + str(dim))
+        
+        
+    # Consider the best combination of values of KL_weight and latent space dim
+    # Focus on the deepness of the CNN
+    
+    # KL weight = 0.0001
+    FILTERS = [(16, 32, 32, 64, 128), (16, 32, 32, 64, 64, 128)]
+    for filt in FILTERS:
+        vae = VAE.load("model/deepness_impact/KL=0.0001_DIM=15/filters=" + str(filt))
         
         #plot some reconstructed images vs original ones
         num_sample_images_to_show = 8
@@ -191,5 +254,73 @@ if __name__ == "__main__":
         generation(vae, 8, 0.0001, save=False)
         
         # plot epochs history
-        plot_epochs_history("model/KL_impact/kl_weight=0.0001/Latent_space_dim_impact/latent_space_dim=" + str(dim))
-
+        plot_epochs_history("model/deepness_impact/KL=0.0001_DIM=15/filters=" + str(filt))
+        
+    # KL weight = 0.001
+    for filt in FILTERS:
+        vae = VAE.load("model/deepness_impact/KL=0.001_DIM=15/filters=" + str(filt))
+        
+        #plot some reconstructed images vs original ones
+        num_sample_images_to_show = 8
+        sample_images, _ = select_images(x_val, y_val, num_sample_images_to_show)
+        reconstructed_images, _ = vae.reconstruct(sample_images)
+        plot_reconstructed_images(sample_images, reconstructed_images, 0.001, save=False)
+    
+        # generate images
+        generation(vae, 8, 0.001, save=False)
+        
+        # plot epochs history
+        plot_epochs_history("model/deepness_impact/KL=0.001_DIM=15/filters=" + str(filt))
+    
+    
+    
+    
+    # analysis effects of learning rate
+    LEARNING_RATES = [0.005, 0.00005]
+    for learning_rate in LEARNING_RATES:
+        vae = VAE.load("model/learning_rate_impact/learning_rate=" + str(learning_rate))
+        
+        #plot some reconstructed images vs original ones
+        num_sample_images_to_show = 25
+        sample_images, _ = select_images(x_val, y_val, num_sample_images_to_show)
+        reconstructed_images, _ = vae.reconstruct(sample_images)
+        #plot_reconstructed_images(sample_images, reconstructed_images, 0.001, save=False)
+    
+        #plot the latent space representation
+        #_, latent_representations = vae.reconstruct(x_val)
+        #plot_images_encoded_in_latent_space(latent_representations, y_val, 0.0001, save=False)
+    
+        # generate images
+        generated_images = vae.generate(25)
+        
+        # plot epochs history
+        plot_epochs_history("model/learning_rate_impact/learning_rate=" + str(learning_rate))
+        
+        plot_images_grid(sample_images, (5, 5))
+        plot_images_grid(reconstructed_images, (5, 5))
+        plot_images_grid(generated_images, (5, 5))  
+        
+    
+    # Cyclical annealing
+    vae = VAE.load("model/cyclical_annealing_schedule")
+    num_sample_images_to_show = 25
+    sample_images, _ = select_images(x_val, y_val, num_sample_images_to_show)
+    reconstructed_images, _ = vae.reconstruct(sample_images)
+    generated_images = vae.generate(25)
+    
+    plot_images_grid(sample_images, (5, 5))
+    plot_images_grid(reconstructed_images, (5, 5))
+    plot_images_grid(generated_images, (5, 5)) 
+    
+    _, latent_representations = vae.reconstruct(x_val)
+    plot_images_encoded_in_latent_space(latent_representations, y_val, 0.0001, save=False)
+    
+    plot_epochs_history("model/cyclical_annealing_schedule")
+    
+        
+    
+    
+    
+    
+    
+    

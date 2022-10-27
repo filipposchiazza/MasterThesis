@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from autoencoder import Autoencoder
+from matplotlib import colors
+from autoencoder import * 
 from train_autoencoder_mnist import load_mnist
 
 def select_images(images, labels, num_images=8):
@@ -23,16 +24,19 @@ def plot_reconstructed_images(images, reconstructed_images):
         ax.imshow(reconstructed_image, cmap="gray_r")
     plt.show()
 
+    
 def plot_images_encoded_in_latent_space(latent_representations, sample_labels):
-    plt.figure(figsize=(10, 10))
-    plt.scatter(latent_representations[:, 0],
-                latent_representations[:, 1],
-                cmap="rainbow",
-                c=sample_labels,
-                alpha=0.5,
-                s=2)
-    plt.colorbar()
-    plt.title("MNIST latent space representation")
+
+    cmap = plt.cm.rainbow
+    norm = colors.BoundaryNorm(np.arange(-0.5, 10, 1), cmap.N)
+
+    plt.scatter(latent_representations[:, 0], latent_representations[:, 1], c=sample_labels, cmap=cmap, norm=norm, s=2, edgecolor='none')
+    plt.colorbar(ticks=np.linspace(0, 9, 10))
+
+    plt.title('Autoencoder latent space of MNIST data', fontsize=15)    
+    plt.xlabel('$z_1$')
+    plt.ylabel('$z_2$')
+
     plt.show()
     
     

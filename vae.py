@@ -3,14 +3,39 @@ import pickle
 import numpy as np
 import tensorflow.keras as k
 import tensorflow as tf
-from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
+from tensorflow.keras.callbacks import Callback, EarlyStopping
 
 tf.compat.v1.disable_eager_execution()
+#######################################################################################################################
+
+class CyclicalAnnealingCallback(Callback):
+    
+    def __init__(self, vae, num_epochs, num_cycles, R, start_weight, learning_rate=0.001):
+        self.num_epochs = num_epochs
+        self.num_cycles = num_cycles
+        self.R = R
+        self.weight = start_weight
+        self.vae = vae
+        self.learning_rate = learning_rate
+    
+    def on_epoch_end(self, epoch, logs={}):
+        ratio = self.num_epochs / self.num_cycles
+        tau = ((epoch) % ratio) / ratio
+        new_weight = np.minimum(tau/self.R, 1)
+        k.backend.set_value(self.weight, new_weight)
+        print ("Current KL Weight is " + str(k.backend.get_value(self.weight)))
+        print ("Current epoch is " + str(epoch))
+        optimizer = k.optimizers.Adam(learning_rate = self.learning_rate)
+        self.vae.model.compile(optimizer=optimizer,
+                           loss = self.vae.combined_loss,
+                           metrics=[self.vae.recostruction_loss, self.vae.kl_loss])
+          
 
 
+#######################################################################################################################
 class VAE:
     
-    def __init__(self, input_shape, conv_filters, conv_kernels, conv_strides, latent_space_dim, kl_weight, num_channel):
+    def __init__(self, input_shape, conv_filters, conv_kernels, conv_strides, latent_space_dim, num_channel):
         """ Create VAE object.
         
 
@@ -41,7 +66,6 @@ class VAE:
         self.conv_kernels = conv_kernels  # [3, 5, 3] 3x3 kernel size in the first layer and so on
         self.conv_strides = conv_strides  # [1, 1, 1]
         self.latent_space_dim = latent_space_dim
-        self.kl_weight = kl_weight
         self.num_channel = num_channel
         
         self.encoder = None
@@ -204,37 +228,49 @@ class VAE:
 #########################################################################################################################
     #Define the recostruction loss function combined with the kl distance
     
-    def _calculate_recostruction_loss(self, y_target, y_prediction):
-        error = y_target - y_prediction
-        recostruction_loss = k.backend.mean(k.backend.square(error), axis = [1, 2, 3])
-        return recostruction_loss
+    def reco_loss(self, reco_weight):
+        def reconstruction_loss(y_target, y_prediction):
+            error = y_target - y_prediction
+            reconstruction_loss = k.backend.mean(k.backend.square(error), axis = [1, 2, 3])
+            return reco_weight * reconstruction_loss
+        return reconstruction_loss
     
-    def _calculate_kl_loss(self, y_target, y_prediction):
+    def kl_loss(self, y_target, y_prediction):
         "Difference from a standard multivariate normal distribution"
         kl_loss = -0.5 * k.backend.sum(1 + self.log_variance - k.backend.square(self.mu) - k.backend.exp(self.log_variance), axis=1)
         return kl_loss
+
     
-    def combined_loss(self, y_target, y_prediction):
-        recostruction_loss = self._calculate_recostruction_loss(y_target, y_prediction)
-        kl_loss = self._calculate_kl_loss(y_target, y_prediction)
-        combined_loss = recostruction_loss + self.kl_weight * kl_loss
-        return combined_loss        
-
-
+    def combined_loss(self, kl_weight, reco_weight):
+        "Wrap the loss as a function of weight"
+        def loss(y_target, y_prediction):
+            reconstruction_loss = self.reco_loss(reco_weight)(y_target, y_prediction)
+            kl_loss = self.kl_loss(y_target, y_prediction)
+            combined_loss = reconstruction_loss + kl_weight * kl_loss
+            return combined_loss 
+        return loss
+            
 
 #########################################################################################################################
     #Compile the variational autoencoder
-    
-    def compile_model(self, learning_rate = 0.001):
+        
+    def compile_model(self, kl_weight, reco_weight=1.0, learning_rate=0.001):
+        self.kl_weight = kl_weight
         optimizer = k.optimizers.Adam(learning_rate = learning_rate)
-        self.model.compile(optimizer=optimizer, 
-                           loss = self.combined_loss, 
-                           metrics=[self._calculate_recostruction_loss, self._calculate_kl_loss])
+        self.model.compile(optimizer=optimizer,
+                           loss = self.combined_loss(kl_weight, reco_weight=reco_weight),
+                           metrics=[self.reco_loss(reco_weight), self.kl_loss])   
+
         
 #########################################################################################################################
     #Train the variational autoencoder
-    
-    def train(self, x_train, x_validation, batch_size, num_epochs):
+       
+    def train(self, 
+              x_train, 
+              x_validation, 
+              batch_size, 
+              num_epochs):
+        
         """ Training function.
         
 
@@ -255,21 +291,16 @@ class VAE:
         None.
 
         """
+        
+
         # create an early stopping criteria
         early_stopping = EarlyStopping(monitor = 'val_loss',
-                                       patience = 5,
-                                       verbose = 1,
-                                       mode = 'min',
-                                       restore_best_weights = True)
-        """
-        # introduce a model ceckpoint, in order to consider only the best epoch
-        ceckpoint_filepath = saving_folder + '/ceckpoint.hdf5'
-        ceckpoint = ModelCheckpoint(filepath = ceckpoint_filepath,
-                                    monitor = 'val_loss',
-                                    verbose = 1,
-                                    save_best_only = True,
-                                    mode = 'min')
-        """
+                                           patience = 5,
+                                           verbose = 1,
+                                           mode = 'min',
+                                           restore_best_weights = True)
+            
+            
         self.model.fit(x_train, 
                        x_train,
                        batch_size = batch_size,
@@ -279,6 +310,96 @@ class VAE:
                        callbacks = [early_stopping])
         
         
+##################################################################################        
+     
+    # Perform Cyclical annealing     
+    def _update_kl_weight(self, current_epoch, num_epochs, num_cycles, R):
+        ratio = num_epochs / num_cycles
+        tau = ((current_epoch) % ratio) / ratio
+        new_weight = np.minimum(tau/R, 1)
+        return new_weight
+        
+    
+    def cyclical_annealing(self, 
+                           x_train, 
+                           x_validation, 
+                           batch_size, 
+                           num_epochs,
+                           learning_rate,
+                           num_cycles,
+                           R,
+                           start_kl_weight = 1e-4,
+                           reco_weight = 1.0,
+                           update_train = False,
+                           weights_path = ''):
+        # Set initial value of kl_weight
+        self.kl_weight = start_kl_weight
+        
+        # Define an optimizer
+        optimizer = k.optimizers.Adam(learning_rate = learning_rate)
+        
+        if update_train == True:
+            self.model.load_weights(weights_path)
+            
+        
+        # Train the first epoch
+        print("Start of epoch 1/" + str(num_epochs))
+        print("Current kl_weight: " + str(self.kl_weight))
+        self.model.compile(optimizer=optimizer,
+                           loss = self.combined_loss(self.kl_weight, reco_weight),
+                           metrics=[self.reco_loss(reco_weight), self.kl_loss])
+        self.model.fit(x_train, 
+                       x_train,
+                       batch_size = batch_size,
+                       epochs = 1,
+                       shuffle = True,
+                       validation_data=(x_validation, x_validation))
+        
+        # Store the weights in a variable
+        weights = self.model.get_weights()
+        
+        # Save history for the first epoch
+        self.history = self.model.history.history
+                
+        
+        # Perform the cicles 
+        for epoch in range(1, num_epochs):
+            
+            # Update the kl_weight
+            self.kl_weight = self._update_kl_weight(current_epoch = epoch,
+                                                    num_epochs = num_epochs,
+                                                    num_cycles = num_cycles,
+                                                    R = R)
+            # Re-compile the model
+            self.model.compile(optimizer=optimizer,
+                               loss = self.combined_loss(self.kl_weight, reco_weight),
+                               metrics=[self.reco_loss(reco_weight), self.kl_loss])
+            
+            # Set the weights of the network
+            self.model.set_weights(weights)
+            
+            # Train
+            print("Start of epoch " + str(epoch+1) + "/" + str(num_epochs))
+            print("Current kl_weight: " + str(self.kl_weight))
+            self.model.fit(x_train, 
+                           x_train,
+                           batch_size = batch_size,
+                           epochs = 1,
+                           shuffle = True,
+                           validation_data=(x_validation, x_validation))
+            
+            # Save weights
+            weights = self.model.get_weights()
+            
+            # Update history 
+            for key in self.history.keys():
+                self.history[key].append(self.model.history.history[key][0])
+            
+
+                
+                
+
+
 #########################################################################################################################
     #Reconstruction method
     
@@ -343,6 +464,9 @@ class VAE:
         parameters_path = os.path.join(save_folder, "parameters.pkl")
         with open(parameters_path, "rb") as f:
             parameters = pickle.load(f)
+        # remove the kl weight from parameters (index = 5)
+        if len(parameters) == 7:
+            parameters.pop(5)
         vae = VAE(*parameters)
         weights_path = os.path.join(save_folder, "weights.h5")
         vae._load_weights(weights_path)
