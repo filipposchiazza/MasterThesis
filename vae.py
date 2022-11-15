@@ -3,9 +3,30 @@ import pickle
 import numpy as np
 import tensorflow.keras as k
 import tensorflow as tf
-from tensorflow.keras.callbacks import Callback, EarlyStopping
+from tensorflow.keras.callbacks import Callback, EarlyStopping, ReduceLROnPlateau
 
 tf.compat.v1.disable_eager_execution()
+
+EARLY_STOPPING = True
+LEARNING_RATE_REDUCTION = True
+
+######################################################################################################################
+
+# Define reconstruction loss and kl loss
+
+def reconstruction_loss(y_target, y_prediction):
+    error = y_target - y_prediction
+    reconstruction_loss = k.backend.mean(k.backend.square(error), axis = [1, 2, 3])
+    return reconstruction_loss
+
+
+def calculate_kl_loss(vae):
+    "Wrap kl loss with the model as argument"
+    def kl_loss(*args):
+        kl_loss_value = -0.5 * k.backend.sum(1 + vae.log_variance - k.backend.square(vae.mu) - k.backend.exp(vae.log_variance), axis=1)
+        return kl_loss_value
+    return kl_loss
+
 #######################################################################################################################
 
 class CyclicalAnnealingCallback(Callback):
@@ -29,8 +50,8 @@ class CyclicalAnnealingCallback(Callback):
         self.vae.model.compile(optimizer=optimizer,
                            loss = self.vae.combined_loss,
                            metrics=[self.vae.recostruction_loss, self.vae.kl_loss])
-          
-
+        
+    
 
 #######################################################################################################################
 class VAE:
@@ -139,6 +160,9 @@ class VAE:
         self.mu = k.layers.Dense(self.latent_space_dim, name="mu")(x)
         self.log_variance = k.layers.Dense(self.latent_space_dim, name="log_variance")(x)
         
+        
+        
+        
         def sample_point_from_normal_distribution(args):
             """
             In order to sample a point from a generic normal distribution with mean Mu and standard deviation Sigma,
@@ -149,10 +173,10 @@ class VAE:
             epsilon = k.backend.random_normal(shape=k.backend.shape(self.mu), mean=0., stddev=1.)
             sampled_point = mu + k.backend.exp(log_variance / 2) * epsilon
             return sampled_point
-        
+
         x = k.layers.Lambda(sample_point_from_normal_distribution,
                             name="encoder_output")([self.mu, self.log_variance])
-        
+
         return x
     
 ##########################################################################################################################   
@@ -223,24 +247,31 @@ class VAE:
     def _build_vae(self):
         model_input = self._model_input
         model_output = self.decoder(self.encoder(model_input))
-        self.model = k.Model(model_input, model_output, name="Variational Autoencoder")
+        self.model = k.Model(model_input, model_output, name="Variational_Autoencoder")
       
 #########################################################################################################################
     #Define the recostruction loss function combined with the kl distance
     
+    """
     def reco_loss(self, reco_weight):
         def reconstruction_loss(y_target, y_prediction):
             error = y_target - y_prediction
             reconstruction_loss = k.backend.mean(k.backend.square(error), axis = [1, 2, 3])
             return reco_weight * reconstruction_loss
         return reconstruction_loss
-    
-    def kl_loss(self, y_target, y_prediction):
-        "Difference from a standard multivariate normal distribution"
-        kl_loss = -0.5 * k.backend.sum(1 + self.log_variance - k.backend.square(self.mu) - k.backend.exp(self.log_variance), axis=1)
-        return kl_loss
 
+    def _combined_loss(self, y_target, y_prediction):
+        reconstruction_loss = self.reconstruction_loss(y_target, y_prediction)
+        kl_loss = self.kl_loss(y_target, y_prediction)
+        return reconstruction_loss + self.kl_weight * kl_loss
+    """
+    def combined_loss(self, y_target, y_predicted):
+        reco_loss = reconstruction_loss(y_target, y_predicted)
+        kl_loss = calculate_kl_loss(self)()
+        combined_loss = reco_loss + self.kl_weight * kl_loss
+        return combined_loss
     
+    """
     def combined_loss(self, kl_weight, reco_weight):
         "Wrap the loss as a function of weight"
         def loss(y_target, y_prediction):
@@ -249,17 +280,18 @@ class VAE:
             combined_loss = reconstruction_loss + kl_weight * kl_loss
             return combined_loss 
         return loss
-            
+    """     
 
 #########################################################################################################################
-    #Compile the variational autoencoder
-        
-    def compile_model(self, kl_weight, reco_weight=1.0, learning_rate=0.001):
+    #Compile the variational autoencoder  
+    
+    def compile_model(self, kl_weight, learning_rate=0.001):
         self.kl_weight = kl_weight
+        #self.kl_weight = tf.Variable(kl_weight, trainable=False)
         optimizer = k.optimizers.Adam(learning_rate = learning_rate)
         self.model.compile(optimizer=optimizer,
-                           loss = self.combined_loss(kl_weight, reco_weight=reco_weight),
-                           metrics=[self.reco_loss(reco_weight), self.kl_loss])   
+                           loss = self.combined_loss,
+                           metrics=[reconstruction_loss, calculate_kl_loss(self)])   
 
         
 #########################################################################################################################
@@ -292,14 +324,24 @@ class VAE:
 
         """
         
-
+        callbacks = []
         # create an early stopping criteria
-        early_stopping = EarlyStopping(monitor = 'val_loss',
+        if EARLY_STOPPING == True:
+            early_stopping = EarlyStopping(monitor = 'val_loss',
                                            patience = 5,
                                            verbose = 1,
                                            mode = 'min',
                                            restore_best_weights = True)
-            
+            callbacks.append(early_stopping)
+        
+        # create learning rate reduction schedule callback
+        if LEARNING_RATE_REDUCTION == True:
+            lr_reduction = ReduceLROnPlateau(monitor='val_loss',
+                                             factor=0.1,
+                                             patience=2,
+                                             verbose=1,
+                                             min_delta=0.0)
+            callbacks.append(lr_reduction)
             
         self.model.fit(x_train, 
                        x_train,
@@ -307,7 +349,7 @@ class VAE:
                        epochs = num_epochs,
                        shuffle = True,
                        validation_data=(x_validation, x_validation),
-                       callbacks = [early_stopping])
+                       callbacks = callbacks)
         
         
 ##################################################################################        

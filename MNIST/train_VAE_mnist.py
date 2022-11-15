@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 
 LEARNING_RATE = 0.0005
 BATCH_SIZE = 32
-EPOCHS = 35
+EPOCHS = 2
 
 KL_WEIGHTS = [0., 1e-5, 1e-4, 0.001, 0.01, 0.1, 1, 10]
 
@@ -103,7 +103,7 @@ if __name__ == '__main__':
                     batch_size = BATCH_SIZE, 
                     epochs = EPOCHS, 
                     latent_dim = 2,  
-                    kl_weight = kl)
+                    kl_weight = 0.001)
                     
         vae.save("model/KL_impact/kl_weight=" + str(kl))
         

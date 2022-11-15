@@ -13,6 +13,7 @@ class Autoencoder:
         self.conv_kernels = conv_kernels
         self.conv_strides = conv_strides
         self.latent_space_dim = latent_space_dim
+        self.num_channels = input_shape[-1]
         
         self.encoder = None
         self.decoder = None
@@ -71,7 +72,7 @@ class Autoencoder:
             name = "encoder_conv_layer_number_{}".format(layer_number))
         
         x = conv_layer(x)
-        x = k.layers.BatchNormalization(name = "encoder_batch_norm_layer_number_{}".format(layer_number))(x)
+        #x = k.layers.BatchNormalization(name = "encoder_batch_norm_layer_number_{}".format(layer_number))(x)
         
         return x
     
@@ -128,14 +129,14 @@ class Autoencoder:
             name = "decoder_conv_transpose_layer_number_{}".format(layer_number))
         
         x = conv_transpose_layer(x)
-        x = k.layers.BatchNormalization(name = "decoder_batch_norm_layer_number_{}".format(layer_number))(x)
+        #x = k.layers.BatchNormalization(name = "decoder_batch_norm_layer_number_{}".format(layer_number))(x)
         
         return x
     
     def _add_decoder_output(self, x):
         
         conv_transpose_layer = k.layers.Conv2DTranspose(
-            filters = 1, # 1 for gray-scale image, 3 for RGB image 
+            filters = self.num_channels, # 1 for gray-scale image, 3 for RGB image 
             kernel_size = self.conv_kernels[0],
             strides = self.conv_strides[0],
             padding = 'same',
